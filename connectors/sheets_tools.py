@@ -15,6 +15,8 @@ def make_sheets_tool(access_token: str):
             url = f"https://sheets.googleapis.com/v4/spreadsheets/{spreadsheet_id}/values/A1:E25"
             with httpx.Client(timeout=8.0) as client:
                 res = client.get(url, headers=headers)
+                if res.status_code == 401:
+                    return "Google Sheets connection expired or token revoked — no spreadsheet data available."
                 if res.status_code != 200:
                     return f"Google Sheets API returned error {res.status_code}: {res.text}"
                 values = res.json().get("values", [])

@@ -35,7 +35,8 @@ class Weakness(TypedDict):
 class PanelState(TypedDict):
     pitch_text: str
     intensity: Intensity
-    connected_providers: list[str]  # e.g. ["github", "stripe", "sheets", "notion"]
+    user_id: str                        # needed by tools to look up real OAuth tokens
+    connected_providers: list[str]      # e.g. ["github", "stripe", "sheets", "notion"]
 
     persona_status: dict[Persona, PersonaStatus]
     current_persona_idx: int  # index into PERSONA_ORDER -- drives sequential order
@@ -48,10 +49,11 @@ class PanelState(TypedDict):
     verdict: list[Weakness] | None
 
 
-def initial_state(pitch_text: str, intensity: Intensity = "normal", connected_providers: list[str] | None = None) -> PanelState:
+def initial_state(pitch_text: str, intensity: Intensity = "normal", connected_providers: list[str] | None = None, user_id: str = "") -> PanelState:
     return PanelState(
         pitch_text=pitch_text,
         intensity=intensity,
+        user_id=user_id,
         connected_providers=connected_providers or [],
         persona_status={p: PersonaStatus(resolved=False, round=0) for p in PERSONA_ORDER},
         current_persona_idx=0,

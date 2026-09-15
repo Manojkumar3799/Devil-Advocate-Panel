@@ -34,11 +34,47 @@ if "theme" not in st.session_state:
 apply_custom_styles()
 
 
+from connectors.oauth import exchange_code_for_token
+from core.config import get_app_base_url
+from db.connections import save_user_connection
+from db.client import get_supabase_client
+
+
 def main():
     # Authentication & User State
     user_id = render_auth_view()
     if not user_id:
         st.stop()
+
+    # --- OAuth Callback Handling (§1) ---
+    code = st.query_params.get("code")
+    state = st.query_params.get("state")
+    if code and state:
+        # State format from ui/connections.py is "provider={key}"
+        provider = None
+        if "provider=" in state:
+            provider = state.split("provider=")[1].split("&")[0]
+        
+        if provider:
+            token_data = exchange_code_for_token(provider, code, redirect_uri=get_app_base_url())
+            if token_data and "access_token" in token_data:
+                access_token = token_data["access_token"]
+                refresh_token = token_data.get("refresh_token")
+                expires_in = token_data.get("expires_in")
+                save_user_connection(
+                    user_id=user_id,
+                    provider=provider,
+                    access_token=access_token,
+                    refresh_token=refresh_token,
+                    metadata=token_data,
+                )
+                st.query_params.clear()
+                st.toast(f"Successfully connected {provider.capitalize()}!", icon="✅")
+                st.session_state["active_page"] = "connections"
+                st.rerun()
+            else:
+                st.query_params.clear()
+                st.error(f"Failed to connect {provider.capitalize()} — could not exchange authorization code.")
 
     # Sidebar: Global Shell (§7)
     with st.sidebar:
@@ -81,6 +117,26 @@ def main():
             '<div class="helper-text" style="padding-top: 12px; font-size: 13px;">v1.0 • Private committee session</div>',
             unsafe_allow_html=True,
         )
+
+        user_email = st.session_state.get("user_email")
+        if user_email:
+            st.markdown(
+                f'<div style="font-size: 12px; color: var(--text-secondary); margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{user_email}</div>',
+                unsafe_allow_html=True,
+            )
+
+        if st.button(":material/logout: Log out", key="logout_btn", type="secondary", use_container_width=True):
+            client = get_supabase_client()
+            if client:
+                try:
+                    client.auth.sign_out()
+                except Exception:
+                    pass
+            st.session_state.pop("user_id", None)
+            st.session_state.pop("user_email", None)
+            st.session_state.pop("sb_access_token", None)
+            st.query_params.clear()
+            st.rerun()
 
     # Main view routing
     active = st.session_state["active_page"]

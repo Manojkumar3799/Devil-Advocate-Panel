@@ -1,50 +1,100 @@
-"""Tool definitions for the Devil's Advocate Panel."""
+"""Tool definitions for the Devil's Advocate Panel.
+
+Real connector tools are wired here — each tool is instantiated with the
+user's actual OAuth access token fetched from the database.  If a provider
+is not connected, no tool is attached for that persona: the LLM reasons
+from pitch text alone rather than receiving fabricated mock data.
+"""
 
 from __future__ import annotations
 
-import os
 from typing import Callable
 from langchain_core.tools import tool
 from .state import Persona
-
-
-def _mock_mcp_tool(name: str, description: str) -> Callable:
-    """Mock connector tool for Phase 1. Replaced with live connectors in Phase 4."""
-    @tool(name, description=description)
-    def _tool(query: str) -> str:
-        return f"[MOCK {name} data for query: '{query}']"
-    return _tool
+from core.config import get_secret
 
 
 def _rag_retrieve_tool() -> Callable:
-    """Mock benchmark retriever tool for Phase 1. Replaced in Phase 5."""
+    """Live benchmark retriever backed by Supabase pgvector (with in-process fallback)."""
+    from db.rag import retrieve_benchmarks
+
     @tool("benchmark_corpus_search", description="Search startup benchmark, unit economics, and post-mortem corpus")
     def _tool(query: str) -> str:
-        return f"[MOCK benchmark search result for '{query}': Median SaaS CAC payback is 14 months; Series A median ARR is $1.8M.]"
+        results = retrieve_benchmarks(query, top_k=3)
+        if not results:
+            return "No benchmark data available."
+        lines = []
+        for r in results:
+            src = r.get("source", "Unknown source")
+            content = r.get("content", "")
+            lines.append(f"[{src}] {content}")
+        return "\n".join(lines)
+
     return _tool
 
 
-def get_tools_for_persona(persona: Persona, connected_providers: list[str]) -> list[Callable]:
-    """Return tool instances bound to the specific persona given connected accounts."""
+def get_tools_for_persona(persona: Persona, user_id: str) -> list[Callable]:
+    """Return real tool instances bound to the user's connected accounts.
+
+    Parameters
+    ----------
+    persona:
+        Which panel member is being instantiated.
+    user_id:
+        The authenticated user's ID.  Used to look up their OAuth tokens
+        from the database so real API calls can be made.
+
+    Notes
+    -----
+    * If a provider is not connected, **no tool is attached** — the persona
+      reasons from pitch text alone rather than seeing ``[MOCK ...]`` strings.
+    * Expired / revoked tokens produce a user-readable error string that the
+      LLM can incorporate into its response (e.g. "GitHub connection expired").
+    """
+    from db.connections import get_user_connections
+
+    # Build a quick lookup: provider_name -> connection record
+    connections: dict[str, dict] = {}
+    if user_id:
+        try:
+            connections = {c["provider"]: c for c in get_user_connections(user_id)}
+        except Exception as e:
+            print(f"Warning: could not fetch user connections for tools: {e}")
+
     tools: list[Callable] = []
 
     if persona == "vc":
-        if "github" in connected_providers:
-            tools.append(_mock_mcp_tool("github_activity", "Analyze repository commit frequency, PR velocity, and contributors"))
+        if "github" in connections:
+            from connectors.github_tools import make_github_tool
+            token = connections["github"].get("access_token", "")
+            if token:
+                tools.append(make_github_tool(token))
 
     elif persona == "analyst":
-        if "stripe" in connected_providers:
-            tools.append(_mock_mcp_tool("stripe_revenue", "Query live Stripe metrics: MRR, net revenue, and subscriber churn"))
-        if "sheets" in connected_providers:
-            tools.append(_mock_mcp_tool("sheets_model", "Inspect the founder's Google Sheet financial model and formulas"))
+        if "stripe" in connections:
+            from connectors.stripe_tools import make_stripe_tool
+            token = connections["stripe"].get("access_token", "")
+            if token:
+                tools.append(make_stripe_tool(token))
+
+        if "sheets" in connections:
+            from connectors.sheets_tools import make_sheets_tool
+            token = connections["sheets"].get("access_token", "")
+            if token:
+                tools.append(make_sheets_tool(token))
+
+        # RAG benchmark search is always available (falls back gracefully when Supabase absent)
         tools.append(_rag_retrieve_tool())
 
     elif persona == "realist":
-        if "notion" in connected_providers:
-            tools.append(_mock_mcp_tool("notion_research", "Search founder's internal Notion workspace for market research notes"))
-        
-        # Check if Tavily is available
-        if os.environ.get("TAVILY_API_KEY"):
+        if "notion" in connections:
+            from connectors.notion_tools import make_notion_tool
+            token = connections["notion"].get("access_token", "")
+            if token:
+                tools.append(make_notion_tool(token))
+
+        # Tavily live market search (optional)
+        if get_secret("TAVILY_API_KEY"):
             try:
                 from langchain_tavily import TavilySearch
                 tools.append(TavilySearch(max_results=3))

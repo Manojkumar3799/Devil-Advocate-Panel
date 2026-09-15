@@ -5,6 +5,7 @@ from __future__ import annotations
 import streamlit as st
 from db.connections import get_user_connections, delete_connection, save_user_connection
 from connectors.oauth import get_oauth_authorize_url
+from core.config import get_app_base_url
 
 
 def render_connections_view(user_id: str):
@@ -53,7 +54,7 @@ def render_connections_view(user_id: str):
                         delete_connection(user_id, key)
                         st.rerun()
                 else:
-                    auth_url = get_oauth_authorize_url(key, "http://localhost:8501", f"provider={key}")
+                    auth_url = get_oauth_authorize_url(key, get_app_base_url(), f"provider={key}")
                     if auth_url:
                         st.link_button("Connect", auth_url, use_container_width=True)
                     else:

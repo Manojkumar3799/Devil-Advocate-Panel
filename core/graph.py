@@ -57,7 +57,7 @@ def make_persona_node(persona: Persona, llm: PanelLLM):
             messages.append(HumanMessage(content=state["pending_user_reply"]))
             state["pending_user_reply"] = None
 
-        tools = get_tools_for_persona(persona, state["connected_providers"])
+        tools = get_tools_for_persona(persona, state["user_id"])
         response, provider_used = llm.invoke(messages, tools=tools)
         thinking, raw_answer = extract_reasoning(response, provider_used)
         visible_answer, resolved = _split_resolved_marker(raw_answer)

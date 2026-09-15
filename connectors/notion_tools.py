@@ -19,6 +19,8 @@ def make_notion_tool(access_token: str):
             with httpx.Client(timeout=8.0) as client:
                 payload = {"query": query, "page_size": 5}
                 res = client.post("https://api.notion.com/v1/search", json=payload, headers=headers)
+                if res.status_code == 401:
+                    return "Notion connection expired or token revoked — no workspace data available."
                 if res.status_code != 200:
                     return f"Notion API error ({res.status_code}): {res.text}"
                 results = res.json().get("results", [])

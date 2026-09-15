@@ -85,6 +85,7 @@ def render_pitch_view(user_id: str):
             pitch_text=pitch_text,
             intensity=current_intensity,
             connected_providers=user_conns,
+            user_id=user_id,
         )
         st.session_state["active_page"] = "session"
         st.session_state["session_active"] = True

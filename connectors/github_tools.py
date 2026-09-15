@@ -19,6 +19,8 @@ def make_github_tool(access_token: str):
         try:
             with httpx.Client(timeout=8.0) as client:
                 res = client.get(f"https://api.github.com/repos/{repo}", headers=headers)
+                if res.status_code == 401:
+                    return "GitHub connection expired or token revoked — no repository data available."
                 if res.status_code != 200:
                     return f"GitHub API error ({res.status_code}): {res.text}"
                 data = res.json()

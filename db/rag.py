@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-import os
 from typing import Any
 from .client import get_supabase_client
+from core.config import get_secret
 
 
 def get_embedding(text: str) -> list[float] | None:
     """Generate embedding vector using Google Gemini embeddings if available."""
-    api_key = os.environ.get("GOOGLE_API_KEY")
+    api_key = get_secret("GOOGLE_API_KEY")
     if not api_key:
         return None
     try:
