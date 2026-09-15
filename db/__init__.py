@@ -1,6 +1,6 @@
 """Database package exports."""
 
-from .client import get_supabase_client
+from .client import get_supabase_client, get_supabase_admin_client
 from .sessions import create_session, update_session_status, get_user_sessions, get_session
 from .transcripts import save_transcript_entry, get_session_transcript
 from .verdicts import save_verdict, update_pdf_url, get_verdict
@@ -9,6 +9,7 @@ from .rag import retrieve_benchmarks
 
 __all__ = [
     "get_supabase_client",
+    "get_supabase_admin_client",
     "create_session",
     "update_session_status",
     "get_user_sessions",

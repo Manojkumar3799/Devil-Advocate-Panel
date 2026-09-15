@@ -29,16 +29,31 @@ When deploying to Streamlit Community Cloud:
 ## 2. Supabase Auth Configuration (Google OAuth)
 
 The primary login is **"Continue with Google"** backed by Supabase Auth.
-1. In your **Google Cloud Console**:
-   - Create an OAuth 2.0 Web Client ID.
-   - Set **Authorized Redirect URIs** to:
-     `https://<YOUR_SUPABASE_PROJECT_ID>.supabase.co/auth/v1/callback`
-2. In your **Supabase Dashboard**:
-   - Navigate to **Authentication** -> **Providers** -> **Google**.
-   - Enable Google and enter your Google Client ID and Client Secret.
-3. In **Authentication** -> **URL Configuration**:
-   - Set **Site URL** to your `APP_BASE_URL` (e.g. `https://your-app-name.streamlit.app`).
-   - Add `https://your-app-name.streamlit.app/**` to **Redirect URLs**.
+Depending on your Supabase project settings, authentication may use either **Implicit Flow** (tokens returned in the URL hash `#access_token=...`) or **PKCE Flow** (authorization code returned in query parameters `?code=...`). The app handles both seamlessly.
+
+1. In your **Google Cloud Console** ([console.cloud.google.com](https://console.cloud.google.com)):
+   - Under **APIs & Services** -> **Credentials**, create or edit your OAuth 2.0 Web Client ID.
+   - Under **Authorized JavaScript origins**, add:
+     - `http://localhost:8501` (for local development)
+     - `https://your-app-name.streamlit.app` (for production)
+     - `https://<YOUR_SUPABASE_PROJECT_ID>.supabase.co`
+   - Under **Authorized redirect URIs**, add:
+     - `https://<YOUR_SUPABASE_PROJECT_ID>.supabase.co/auth/v1/callback`
+     *(Note: Supabase handles the initial OAuth exchange with Google, so Google redirects back to Supabase's callback endpoint).*
+
+2. In your **Supabase Dashboard** ([supabase.com/dashboard](https://supabase.com/dashboard)):
+   - Navigate to **Authentication** -> **Providers** -> **Google**:
+     - Enable Google provider.
+     - Enter your Google Client ID and Google Client Secret from step 1.
+   - Navigate to **Authentication** -> **URL Configuration**:
+     - **Site URL**: Set to `APP_BASE_URL` (`http://localhost:8501` for local development, or `https://your-app-name.streamlit.app` in production).
+     - **Redirect URLs**: Add the wildcard paths so Supabase redirects users back to your app:
+       - `http://localhost:8501/**` (local development)
+       - `https://your-app-name.streamlit.app/**` (production)
+
+### How the Flows Work Under the Hood:
+- **Implicit Flow**: Supabase redirects back to `http://localhost:8501/#access_token=...&refresh_token=...`. Because browsers never send URL hashes to the Streamlit Python server, `ui/auth.py` executes a client-side JavaScript bridge via `st.html(..., unsafe_allow_javascript=True)` to convert the hash to `?sb_access_token=...`, which Streamlit then parses and clears.
+- **PKCE Flow**: Supabase redirects back with `?code=...&state=...`. `ui/auth.py` detects the code (verifying state does not belong to third-party connector tools) and calls `client.auth.exchange_code_for_session({"auth_code": code})` to authenticate the user session.
 
 ---
 

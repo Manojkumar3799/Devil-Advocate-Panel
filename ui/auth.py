@@ -70,6 +70,43 @@ def _handle_supabase_token_callback(client) -> bool:
     return False
 
 
+def _handle_supabase_code_callback(client) -> bool:
+    """Check for a Supabase PKCE authorization code in query params.
+
+    Only handles the callback if state does NOT contain 'provider=',
+    ensuring connector OAuth flows (GitHub, Stripe, Notion, Sheets)
+    handled in app.py are not intercepted.
+
+    Returns True if a session was established, False otherwise.
+    """
+    code = st.query_params.get("code")
+    if not code:
+        return False
+
+    state = st.query_params.get("state")
+    # Guard: If state indicates a connector OAuth callback, let app.py handle it
+    if state and "provider=" in state:
+        return False
+
+    try:
+        res = client.auth.exchange_code_for_session({"auth_code": code})
+        user = res.user if hasattr(res, "user") and res.user else getattr(res.session, "user", None) if hasattr(res, "session") else None
+        session = getattr(res, "session", None)
+        access_token = getattr(session, "access_token", None) if session else None
+
+        if user:
+            st.session_state["user_id"] = str(user.id)
+            st.session_state["user_email"] = user.email or ""
+            if access_token:
+                st.session_state["sb_access_token"] = access_token
+            st.query_params.clear()
+            return True
+    except Exception as e:
+        st.error(f"Google sign-in failed during code exchange: {e}")
+        st.query_params.clear()
+    return False
+
+
 def render_auth_view() -> str | None:
     """Render login/user status view. Returns user_id if authenticated."""
     client = get_supabase_client()
@@ -81,10 +118,14 @@ def render_auth_view() -> str | None:
         return "dev_user_demo"
 
     # --- OAuth fragment bridge (injected on every page load; no-op when hash is absent) ---
-    st.html(_OAUTH_BRIDGE_JS)
+    st.html(_OAUTH_BRIDGE_JS, unsafe_allow_javascript=True)
 
-    # Check if Supabase redirected back with tokens in query params (written by JS bridge)
+    # Check if Supabase redirected back with tokens in query params (written by JS bridge - implicit flow)
     if _handle_supabase_token_callback(client):
+        st.rerun()
+
+    # Check if Supabase redirected back with an auth code (PKCE flow)
+    if _handle_supabase_code_callback(client):
         st.rerun()
 
     # Already authenticated

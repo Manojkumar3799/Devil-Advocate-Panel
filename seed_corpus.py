@@ -7,7 +7,7 @@ from __future__ import annotations
 import os
 from dotenv import load_dotenv
 
-from db.client import get_supabase_client
+from db.client import get_supabase_admin_client
 from db.rag import get_embedding
 
 load_dotenv()
@@ -42,9 +42,9 @@ SAMPLE_BENCHMARKS = [
 
 
 def main():
-    client = get_supabase_client()
+    client = get_supabase_admin_client()
     if not client:
-        print("⚠️ Supabase credentials not set in .env. Skipping remote DB seed.")
+        print("⚠️ Supabase admin credentials (SUPABASE_SERVICE_KEY) not set in .env. Skipping remote DB seed.")
         print(f"Sample benchmarks count: {len(SAMPLE_BENCHMARKS)}")
         return
 
