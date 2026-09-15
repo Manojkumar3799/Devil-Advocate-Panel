@@ -13,7 +13,6 @@ Login flow:
 from __future__ import annotations
 
 import streamlit as st
-import streamlit.components.v1 as components
 from db.client import get_supabase_client
 from core.config import get_app_base_url
 
@@ -82,7 +81,7 @@ def render_auth_view() -> str | None:
         return "dev_user_demo"
 
     # --- OAuth fragment bridge (injected on every page load; no-op when hash is absent) ---
-    components.html(_OAUTH_BRIDGE_JS, height=0, scrolling=False)
+    st.html(_OAUTH_BRIDGE_JS)
 
     # Check if Supabase redirected back with tokens in query params (written by JS bridge)
     if _handle_supabase_token_callback(client):

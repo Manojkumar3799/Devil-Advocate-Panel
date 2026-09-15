@@ -29,6 +29,39 @@ PERSONA_META = {
 }
 
 
+_BILLING_KEYWORDS = (
+    "permission-denied", "permission denied", "insufficient_quota",
+    "invalid_api_key", "incorrect api key", "credits", "quota",
+    "403", "401", "billing",
+)
+
+
+def _handle_graph_error(exc: Exception) -> None:
+    """Show a graceful Streamlit error banner for graph/LLM failures.
+
+    Preserves any transcript already in session_state — does NOT wipe it.
+    Distinguishes billing/auth errors (non-retryable) from transient ones.
+    """
+    err_str = str(exc).lower()
+    is_billing = any(kw in err_str for kw in _BILLING_KEYWORDS)
+
+    if is_billing:
+        st.error(
+            "One of the panel's AI providers is unavailable (billing/credits issue) — "
+            "the session could not continue. Check your API provider dashboards "
+            "(xAI, Google AI Studio, Groq) and ensure the active API key has credits.",
+            icon=":material/credit_card_off:",
+        )
+    else:
+        st.error(
+            f"Something went wrong generating this response: `{exc}`\n\n"
+            "The rounds completed so far are preserved — you can try again below.",
+            icon=":material/warning:",
+        )
+        if st.button("Retry last turn", key="retry_turn_btn", type="secondary"):
+            st.rerun()
+
+
 def render_session_view(user_id: str):
     state = st.session_state.get("panel_state")
     if not state:
@@ -148,12 +181,14 @@ def render_session_view(user_id: str):
                         st.session_state["compiled_graph"] = graph
 
                     config = {"configurable": {"thread_id": session_id}}
-                    updated_state = graph.invoke(Command(resume=user_response.strip()), config=config)
-
-                    st.session_state["panel_state"] = updated_state
-                    if updated_state.get("verdict"):
-                        st.session_state["active_page"] = "verdict"
-                    st.rerun()
+                    try:
+                        updated_state = graph.invoke(Command(resume=user_response.strip()), config=config)
+                        st.session_state["panel_state"] = updated_state
+                        if updated_state.get("verdict"):
+                            st.session_state["active_page"] = "verdict"
+                        st.rerun()
+                    except Exception as exc:
+                        _handle_graph_error(exc)
 
     else:
         # Next turn or begin interrogation
@@ -168,9 +203,11 @@ def render_session_view(user_id: str):
                         st.session_state["compiled_graph"] = graph
 
                     config = {"configurable": {"thread_id": session_id}}
-                    updated_state = graph.invoke(state, config=config)
-                    st.session_state["panel_state"] = updated_state
-
-                    if updated_state.get("verdict"):
-                        st.session_state["active_page"] = "verdict"
-                    st.rerun()
+                    try:
+                        updated_state = graph.invoke(state, config=config)
+                        st.session_state["panel_state"] = updated_state
+                        if updated_state.get("verdict"):
+                            st.session_state["active_page"] = "verdict"
+                        st.rerun()
+                    except Exception as exc:
+                        _handle_graph_error(exc)

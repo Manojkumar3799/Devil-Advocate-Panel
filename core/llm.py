@@ -1,19 +1,28 @@
 """
-LLM fallback chain: xAI Grok (primary) -> Gemini 2.5 Flash -> Groq.
+LLM fallback chain: Gemini (primary) -> xAI Grok -> Groq.
 
 Policy:
   - If a model's API isn't responding (rate limit / quota / timeout),
     retry ONCE on that same model, then fall back to the next model.
-  - Once a session has fallen back off Grok, stick with the working
-    provider for the rest of the session instead of re-probing Grok.
+  - Once a session has fallen back to a different provider, stick with
+    the working one for the rest of the session.
+  - The provider order is configurable via LLM_PROVIDER_ORDER env var
+    (comma-separated, e.g. "xai,google_genai,groq") so switching back
+    to Grok-primary is a one-line change once credits are restored.
 """
 
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Literal
 from langchain.chat_models import init_chat_model
+
+# Configurable provider order — override with LLM_PROVIDER_ORDER=xai,google_genai,groq
+# to restore Grok as primary once credits are available.
+DEFAULT_ORDER = ["google_genai", "xai", "groq"]
+_order_override = os.environ.get("LLM_PROVIDER_ORDER")  # e.g. "xai,google_genai,groq"
+PROVIDER_ORDER: list[str] = _order_override.split(",") if _order_override else DEFAULT_ORDER
 
 Provider = Literal["xai", "google_genai", "groq"]
 
@@ -48,11 +57,11 @@ def _one_retry(model: Any) -> Any:
 class PanelLLM:
     """Manages the fallback chain with sticky provider behavior."""
 
-    current_provider: Provider = "xai"
+    current_provider: Provider = PROVIDER_ORDER[0]  # type: ignore[assignment]
 
     def __post_init__(self):
         self._chain: dict[str, Any] = {}
-        self._order: list[Provider] = ["xai", "google_genai", "groq"]
+        self._order: list[str] = list(PROVIDER_ORDER)
 
         # Only initialize models if their API key is present or on-demand
         # We configure them with fallbacks
@@ -83,11 +92,11 @@ class PanelLLM:
             pass
 
         self._chain = models
-        # Determine initial starting provider based on available keys
-        if "xai" not in self._chain and "google_genai" in self._chain:
-            self.current_provider = "google_genai"
-        elif "xai" not in self._chain and "groq" in self._chain:
-            self.current_provider = "groq"
+        # Snap current_provider to the first available in PROVIDER_ORDER
+        for p in self._order:
+            if p in self._chain:
+                self.current_provider = p  # type: ignore[assignment]
+                break
 
     def _get_active_chain(self, tools: list[Any] | None = None) -> Any:
         available_providers = [p for p in self._order if p in self._chain]
