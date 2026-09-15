@@ -11,10 +11,15 @@ def get_embedding(text: str) -> list[float] | None:
     """Generate embedding vector using Google Gemini embeddings if available."""
     api_key = get_secret("GOOGLE_API_KEY")
     if not api_key:
+        print("Warning: GOOGLE_API_KEY not set, cannot generate embedding.")
         return None
     try:
         from langchain_google_genai import GoogleGenerativeAIEmbeddings
-        embeddings = GoogleGenerativeAIEmbeddings(model="models/text-embedding-004", google_api_key=api_key)
+        embeddings = GoogleGenerativeAIEmbeddings(
+            model="models/gemini-embedding-001",
+            google_api_key=api_key,
+            output_dimensionality=768,
+        )
         return embeddings.embed_query(text)
     except Exception as e:
         print(f"Error generating embedding: {e}")

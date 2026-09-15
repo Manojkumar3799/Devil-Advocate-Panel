@@ -49,22 +49,34 @@ def main():
         return
 
     print("Seeding benchmark corpus into Supabase...")
+    # Clean up existing rows before reseeding to ensure no stale/NULL-embedding rows remain
+    try:
+        client.table("benchmark_corpus").delete().neq("id", "00000000-0000-0000-0000-000000000000").execute()
+        print("Cleared existing rows from benchmark_corpus.")
+    except Exception as e:
+        print(f"Notice: Could not clear existing rows from benchmark_corpus: {e}")
+
+    inserted_count = 0
     for item in SAMPLE_BENCHMARKS:
         emb = get_embedding(item["content"])
+        if not emb:
+            print(f"❌ ERROR: Failed to generate embedding for [{item['tag']}] '{item['source']}'. Skipping insertion to prevent corrupt NULL embedding rows.")
+            continue
+
         payload = {
             "content": item["content"],
             "source": item["source"],
             "tag": item["tag"],
+            "embedding": emb,
         }
-        if emb:
-            payload["embedding"] = emb
         try:
             client.table("benchmark_corpus").insert(payload).execute()
-            print(f"✓ Inserted: [{item['tag']}] {item['source']}")
+            print(f"[OK] Inserted: [{item['tag']}] {item['source']} (embedding dim: {len(emb)})")
+            inserted_count += 1
         except Exception as e:
             print(f"Failed to insert item {item['source']}: {e}")
 
-    print("Corpus seeding completed.")
+    print(f"Corpus seeding completed ({inserted_count}/{len(SAMPLE_BENCHMARKS)} inserted).")
 
 
 if __name__ == "__main__":
