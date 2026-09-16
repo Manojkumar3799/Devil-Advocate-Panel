@@ -32,25 +32,39 @@ def render_verdict_view(user_id: str):
 
     st.markdown('<div style="margin-top: 24px;"></div>', unsafe_allow_html=True)
 
-    # Sort strictly by severity descending (§7)
+    # Sort strictly by severity descending
     sorted_verdict = sorted(verdict, key=lambda x: int(x.get("severity", 3)), reverse=True)
 
-    # Weaknesses listed as stacked rows separated by hairline dividers (not cards)
-    for item in sorted_verdict:
+    sev_color_map = {
+        1: "low",
+        2: "low",
+        3: "medium",
+        4: "high",
+        5: "critical",
+    }
+
+    # Weaknesses listed as glassmorphic cards with animated horizontal severity gauges
+    for idx, item in enumerate(sorted_verdict):
         sev = int(item.get("severity", 3))
         issue = item.get("issue", "")
         fix = item.get("fix", "")
+        target_pct = min(100, int((sev / 5.0) * 100))
+        delay_ms = idx * 100
+        sev_token = sev_color_map.get(sev, "medium")
 
         st.markdown(
             f"""
-            <div class="verdict-row">
-                <div style="display: flex; align-items: flex-start; gap: 12px; margin-bottom: 8px;">
+            <div class="verdict-row-card">
+                <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 10px; flex-wrap: wrap;">
                     <span class="severity-pill severity-pill-{sev}">Sev {sev}</span>
-                    <span style="font-family: 'IBM Plex Sans', sans-serif; font-size: 16px; font-weight: 500; color: var(--text-primary); line-height: 1.4;">
+                    <div class="severity-gauge-track" title="Severity {sev} of 5">
+                        <div class="severity-gauge-fill" style="--target-width: {target_pct}%; background-color: var(--severity-{sev_token}); animation-delay: {delay_ms}ms;"></div>
+                    </div>
+                    <span style="font-family: 'IBM Plex Sans', sans-serif; font-size: 16px; font-weight: 500; color: var(--text-primary); line-height: 1.4; flex: 1;">
                         {issue}
                     </span>
                 </div>
-                <div style="padding-left: 64px; font-family: 'IBM Plex Sans', sans-serif; font-size: 14px; color: var(--text-secondary); line-height: 1.5; max-width: 75ch;">
+                <div style="font-family: 'IBM Plex Sans', sans-serif; font-size: 14px; color: var(--text-secondary); line-height: 1.5; max-width: 75ch; padding-left: 2px;">
                     {fix}
                 </div>
             </div>

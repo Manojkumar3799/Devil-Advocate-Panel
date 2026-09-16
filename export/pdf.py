@@ -18,6 +18,7 @@ from reportlab.platypus import (
     HRFlowable,
     KeepTogether,
 )
+from core.timing import timed_stage
 
 
 def generate_panel_pdf(
@@ -28,6 +29,17 @@ def generate_panel_pdf(
     session_id: str | None = None,
 ) -> bytes:
     """Generate a clean, high-design PDF executive summary report of the panel grilling."""
+    with timed_stage("PDF generation (ReportLab)"):
+        return _generate_panel_pdf_inner(pitch_text, intensity, transcript, verdict, session_id)
+
+
+def _generate_panel_pdf_inner(
+    pitch_text: str,
+    intensity: str,
+    transcript: list[dict[str, Any]],
+    verdict: list[dict[str, Any]],
+    session_id: str | None = None,
+) -> bytes:
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
         buffer,

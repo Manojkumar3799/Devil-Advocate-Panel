@@ -23,6 +23,7 @@ from .prompts import build_persona_system_prompt, VERDICT_SYSTEM_PROMPT
 from .llm import PanelLLM
 from .reasoning import extract_reasoning
 from .tools import get_tools_for_persona
+from core.timing import timed_stage
 
 _RESOLVED_RE = re.compile(r"\n?RESOLVED:\s*(true|false)\s*$", re.IGNORECASE)
 
@@ -58,7 +59,8 @@ def make_persona_node(persona: Persona, llm: PanelLLM):
             state["pending_user_reply"] = None
 
         tools = get_tools_for_persona(persona, state["user_id"])
-        response, provider_used = llm.invoke(messages, tools=tools)
+        with timed_stage(f"LLM invoke: {persona}"):
+            response, provider_used = llm.invoke(messages, tools=tools)
         thinking, raw_answer = extract_reasoning(response, provider_used)
         visible_answer, resolved = _split_resolved_marker(raw_answer)
 
@@ -126,7 +128,8 @@ def make_verdict_node(llm: PanelLLM):
                 content=f"Intensity: {state['intensity']}\n\nPitch:\n{state['pitch_text']}\n\nTranscript:\n{transcript_text}"
             ),
         ]
-        response, provider_used = llm.invoke(messages)
+        with timed_stage("LLM invoke: verdict synthesis"):
+            response, provider_used = llm.invoke(messages)
         state["llm_calls_made"] += 1
         
         content = response.content if hasattr(response, "content") else str(response)
@@ -154,25 +157,43 @@ def make_verdict_node(llm: PanelLLM):
 
 
 def build_graph(checkpointer=None):
-    llm = PanelLLM()
-    graph = StateGraph(PanelState)
+    with timed_stage("LangGraph build_graph"):
+        llm = PanelLLM()
+        graph = StateGraph(PanelState)
 
-    for persona in PERSONA_ORDER:
-        graph.add_node(persona, make_persona_node(persona, llm))
-    graph.add_node("router", router_node)
-    graph.add_node("verdict", make_verdict_node(llm))
+        for persona in PERSONA_ORDER:
+            graph.add_node(persona, make_persona_node(persona, llm))
+        graph.add_node("router", router_node)
+        graph.add_node("verdict", make_verdict_node(llm))
 
-    graph.add_edge(START, PERSONA_ORDER[0])
-    for persona in PERSONA_ORDER:
-        graph.add_edge(persona, "router")
-    
-    graph.add_conditional_edges(
-        "router",
-        route_after,
-        {**{p: p for p in PERSONA_ORDER}, "verdict": "verdict"},
-    )
-    graph.add_edge("verdict", END)
+        graph.add_edge(START, PERSONA_ORDER[0])
+        for persona in PERSONA_ORDER:
+            graph.add_edge(persona, "router")
+        
+        graph.add_conditional_edges(
+            "router",
+            route_after,
+            {**{p: p for p in PERSONA_ORDER}, "verdict": "verdict"},
+        )
+        graph.add_edge("verdict", END)
 
-    if checkpointer is None:
-        checkpointer = MemorySaver()
-    return graph.compile(checkpointer=checkpointer)
+        if checkpointer is None:
+            checkpointer = MemorySaver()
+        return graph.compile(checkpointer=checkpointer)
+
+
+def _build_singleton_graph():
+    return build_graph(checkpointer=MemorySaver())
+
+
+try:
+    import streamlit as st
+    get_compiled_graph = st.cache_resource(show_spinner=False)(_build_singleton_graph)
+except Exception:
+    _cached_graph_instance = None
+    def get_compiled_graph():
+        global _cached_graph_instance
+        if _cached_graph_instance is None:
+            _cached_graph_instance = _build_singleton_graph()
+        return _cached_graph_instance
+

@@ -5,6 +5,25 @@ from __future__ import annotations
 from typing import Any
 from .client import get_supabase_client
 from core.config import get_secret
+from core.timing import timed_stage
+
+_embeddings_client = None
+
+
+def _create_embeddings_client_raw(api_key: str) -> Any:
+    from langchain_google_genai import GoogleGenerativeAIEmbeddings
+    return GoogleGenerativeAIEmbeddings(
+        model="models/gemini-embedding-001",
+        google_api_key=api_key,
+        output_dimensionality=768,
+    )
+
+
+try:
+    import streamlit as st
+    _get_cached_embeddings = st.cache_resource(show_spinner=False)(_create_embeddings_client_raw)
+except Exception:
+    _get_cached_embeddings = _create_embeddings_client_raw
 
 
 def get_embedding(text: str) -> list[float] | None:
@@ -14,13 +33,9 @@ def get_embedding(text: str) -> list[float] | None:
         print("Warning: GOOGLE_API_KEY not set, cannot generate embedding.")
         return None
     try:
-        from langchain_google_genai import GoogleGenerativeAIEmbeddings
-        embeddings = GoogleGenerativeAIEmbeddings(
-            model="models/gemini-embedding-001",
-            google_api_key=api_key,
-            output_dimensionality=768,
-        )
-        return embeddings.embed_query(text)
+        with timed_stage("Embedding generation"):
+            embeddings = _get_cached_embeddings(api_key)
+            return embeddings.embed_query(text)
     except Exception as e:
         print(f"Error generating embedding: {e}")
         return None
@@ -28,6 +43,11 @@ def get_embedding(text: str) -> list[float] | None:
 
 def retrieve_benchmarks(query: str, top_k: int = 3) -> list[dict[str, Any]]:
     """Retrieve top relevant benchmark entries via pgvector similarity search or fallback."""
+    with timed_stage(f"RAG retrieve_benchmarks (query='{query[:30]}...')"):
+        return _retrieve_benchmarks_inner(query, top_k)
+
+
+def _retrieve_benchmarks_inner(query: str, top_k: int = 3) -> list[dict[str, Any]]:
     client = get_supabase_client()
     if not client:
         return [

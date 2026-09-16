@@ -138,8 +138,9 @@ def main():
             st.query_params.clear()
             st.rerun()
 
-    # Main view routing
+    # Main view routing wrapped in cross-fade & upward slide transition
     active = st.session_state["active_page"]
+    st.markdown('<div class="screen-transition-container">', unsafe_allow_html=True)
     if active == "pitch":
         render_pitch_view(user_id)
     elif active == "session":
@@ -150,6 +151,7 @@ def main():
         render_connections_view(user_id)
     elif active == "history":
         render_history_view(user_id)
+    st.markdown('</div>', unsafe_allow_html=True)
 
 
 if __name__ == "__main__":

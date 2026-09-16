@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import streamlit as st
 from core.state import initial_state
-from db.connections import get_user_connections
+from db.connections import get_cached_user_connections
 from db.sessions import create_session
 
 SAMPLE_PITCH = (
@@ -44,7 +44,7 @@ def render_pitch_view(user_id: str):
     for i, (key, title, desc) in enumerate(intensities):
         with cols[i]:
             is_selected = selected_intensity == key
-            selected_class = "selected" if is_selected else ""
+            selected_class = f"selected intensity-{key}" if is_selected else f"intensity-{key}"
             st.markdown(
                 f"""
                 <div class="intensity-card {selected_class}">
@@ -62,8 +62,8 @@ def render_pitch_view(user_id: str):
 
     current_intensity = st.session_state.get("selected_intensity", "normal")
 
-    # Display connected data sources note
-    user_conns = [c["provider"] for c in get_user_connections(user_id)]
+    # Display connected data sources note using cached connections
+    user_conns = [c["provider"] for c in get_cached_user_connections(user_id)]
     if user_conns:
         conn_names = ", ".join([c.capitalize() for c in user_conns])
         st.markdown(f'<p class="helper-text" style="margin-top: 24px;">:material/link: Connected accounts: {conn_names}</p>', unsafe_allow_html=True)
