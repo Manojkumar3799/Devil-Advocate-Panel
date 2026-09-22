@@ -3,32 +3,44 @@
 from __future__ import annotations
 
 import streamlit as st
-from export.pdf import generate_panel_pdf
-from db.verdicts import save_verdict
-from db.sessions import update_session_status
+
+try:
+    from .. import api_client
+except ImportError:
+    import api_client
 
 
 def render_verdict_view(user_id: str):
+    token = st.session_state.get("sb_access_token", "")
     state = st.session_state.get("panel_state")
-    if not state or not state.get("verdict"):
+    session_id = st.session_state.get("current_session_id")
+
+    # If state or verdict missing, attempt to fetch via API if session_id is present
+    verdict = None
+    if state and state.get("verdict"):
+        verdict = state.get("verdict")
+    elif session_id:
+        try:
+            verdict_data = api_client.get_verdict(session_id=session_id, token=token)
+            verdict = verdict_data.get("weaknesses", [])
+        except Exception:
+            verdict = None
+
+    if not verdict:
         st.warning("No verdict available. Please complete a pitch session first.")
         if st.button("Submit a pitch", type="primary"):
             st.session_state["active_page"] = "pitch"
             st.rerun()
         return
 
-    session_id = st.session_state.get("current_session_id", "local_session")
-    verdict = state.get("verdict", [])
+    session_id = session_id or "local_session"
+    intensity = state.get("intensity", "normal") if state else "normal"
 
     st.markdown('<div class="page-title">Verdict</div>', unsafe_allow_html=True)
     st.markdown(
-        f'<p class="helper-text">The investment committee has concluded their assessment at {state.get("intensity", "normal").lower()} intensity. Vulnerabilities are ranked by risk severity below.</p>',
+        f'<p class="helper-text">The investment committee has concluded their assessment at {intensity.lower()} intensity. Vulnerabilities are ranked by risk severity below.</p>',
         unsafe_allow_html=True,
     )
-
-    if session_id != "local_session":
-        save_verdict(session_id, verdict)
-        update_session_status(session_id, status="completed", round_count=state.get("llm_calls_made", 0))
 
     st.markdown('<div style="margin-top: 24px;"></div>', unsafe_allow_html=True)
 
@@ -76,34 +88,33 @@ def render_verdict_view(user_id: str):
 
     col_dl, col_new = st.columns([5, 5])
     with col_dl:
-        pdf_bytes = generate_panel_pdf(
-            pitch_text=state.get("pitch_text", ""),
-            intensity=state.get("intensity", "normal"),
-            transcript=state.get("transcript", []),
-            verdict=verdict,
-            session_id=session_id,
-        )
-        st.download_button(
-            label=":material/download: Download PDF",
-            data=pdf_bytes,
-            file_name=f"devils_advocate_verdict_{session_id[:8]}.pdf",
-            mime="application/pdf",
-            type="primary",
-            use_container_width=True,
-        )
+        try:
+            pdf_bytes = api_client.get_session_pdf(session_id=session_id, token=token)
+            st.download_button(
+                label=":material/download: Download PDF",
+                data=pdf_bytes,
+                file_name=f"devils_advocate_verdict_{session_id[:8]}.pdf",
+                mime="application/pdf",
+                type="primary",
+                use_container_width=True,
+            )
+        except Exception as exc:
+            st.error(f"Could not prepare PDF: {exc}")
 
     with col_new:
         if st.button("Start new session", type="secondary", use_container_width=True):
             st.session_state["active_page"] = "pitch"
             st.session_state["panel_state"] = None
-            st.session_state["compiled_graph"] = None
+            st.session_state["current_session_id"] = None
             st.rerun()
 
     # Full conversation recap expander
-    with st.expander("Transcript review", expanded=False):
-        for entry in state.get("transcript", []):
-            st.markdown(f"**{entry.get('persona', '').upper()} Round {entry.get('round', 1)}**")
-            st.markdown(f'<p class="constrained-text">{entry.get("question", "")}</p>', unsafe_allow_html=True)
-            if entry.get("user_reply"):
-                st.markdown(f'<p class="constrained-text text-secondary">Founder: {entry.get("user_reply")}</p>', unsafe_allow_html=True)
-            st.markdown("---")
+    transcript = state.get("transcript", []) if state else []
+    if transcript:
+        with st.expander("Transcript review", expanded=False):
+            for entry in transcript:
+                st.markdown(f"**{entry.get('persona', '').upper()} Round {entry.get('round', 1)}**")
+                st.markdown(f'<p class="constrained-text">{entry.get("question", "")}</p>', unsafe_allow_html=True)
+                if entry.get("user_reply"):
+                    st.markdown(f'<p class="constrained-text text-secondary">Founder: {entry.get("user_reply")}</p>', unsafe_allow_html=True)
+                st.markdown("---")

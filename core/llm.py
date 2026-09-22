@@ -68,26 +68,20 @@ class PanelLLM:
         self._init_models()
 
     def _init_models(self):
-        # We lazily initialize or initialize with sensible defaults
+        # Store underlying chat models directly so tools can be bound via bind_tools
         models = {}
         try:
-            models["xai"] = _one_retry(
-                init_chat_model("grok-4", model_provider="xai", temperature=0.7)
-            )
+            models["xai"] = init_chat_model("grok-4", model_provider="xai", temperature=0.7)
         except Exception:
             pass
 
         try:
-            models["google_genai"] = _one_retry(
-                init_chat_model("gemini-2.5-flash", model_provider="google_genai", temperature=0.7)
-            )
+            models["google_genai"] = init_chat_model("gemini-2.5-flash", model_provider="google_genai", temperature=0.7)
         except Exception:
             pass
 
         try:
-            models["groq"] = _one_retry(
-                init_chat_model("llama-3.3-70b-versatile", model_provider="groq", temperature=0.7)
-            )
+            models["groq"] = init_chat_model("llama-3.3-70b-versatile", model_provider="groq", temperature=0.7)
         except Exception:
             pass
 
@@ -109,13 +103,15 @@ class PanelLLM:
         
         chain_providers = available_providers[start_idx:]
         models = [self._chain[p] for p in chain_providers]
-        
-        primary = models[0]
-        fallbacks = models[1:]
 
         if tools:
-            primary = primary.bind_tools(tools)
-            fallbacks = [fb.bind_tools(tools) for fb in fallbacks]
+            models = [m.bind_tools(tools) if hasattr(m, "bind_tools") else m for m in models]
+
+        # Wrap each model with retry
+        models = [_one_retry(m) for m in models]
+
+        primary = models[0]
+        fallbacks = models[1:]
 
         if fallbacks:
             return primary.with_fallbacks(fallbacks, exceptions_to_handle=RETRYABLE_EXCEPTIONS)

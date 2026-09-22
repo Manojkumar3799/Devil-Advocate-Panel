@@ -16,9 +16,11 @@ When deploying to Streamlit Community Cloud:
 | Secret Key | Description | Example / Note |
 |---|---|---|
 | `APP_BASE_URL` | Public production URL of your deployed app | `https://your-app-name.streamlit.app` (no trailing slash) |
+| `BACKEND_BASE_URL` | Public or internal URL of the FastAPI backend | `https://your-backend.railway.app` or `http://localhost:8000` |
+| `FRONTEND_BASE_URL` | Public URL of the Streamlit frontend (used for OAuth redirects) | `https://your-app-name.streamlit.app` or `http://localhost:8501` |
 | `SUPABASE_URL` | Supabase project URL | `https://xyzcompany.supabase.co` |
 | `SUPABASE_KEY` | Supabase Anon public key | `eyJhbGciOi...` |
-| `SUPABASE_SERVICE_KEY` | Supabase service role key (optional for client/admin) | `eyJhbGciOi...` |
+| `SUPABASE_SERVICE_KEY` | Supabase service role key (used by backend for JWT verification) | `eyJhbGciOi...` |
 | `GOOGLE_API_KEY` | Gemini API key (for Market Realist / embeddings) | `AIzaSy...` |
 | `XAI_API_KEY` | xAI Grok API key (for VC persona) | `xai-...` |
 | `GROQ_API_KEY` | Groq API key (for Financial Analyst persona) | `gsk_...` |

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from typing import Any
-from .client import get_supabase_client
+from .client import get_supabase_admin_client as get_supabase_client
 
 
 def save_verdict(session_id: str, weaknesses: list[dict[str, Any]], pdf_url: str | None = None) -> dict[str, Any] | None:

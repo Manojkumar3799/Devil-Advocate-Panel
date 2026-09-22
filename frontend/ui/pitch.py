@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import streamlit as st
-from core.state import initial_state
-from db.connections import get_cached_user_connections
-from db.sessions import create_session
+
+try:
+    from .. import api_client
+except ImportError:
+    import api_client
 
 SAMPLE_PITCH = (
     "We are building DevPulse, an AI agent orchestration engine for engineering teams. "
@@ -15,6 +17,8 @@ SAMPLE_PITCH = (
 
 
 def render_pitch_view(user_id: str):
+    token = st.session_state.get("sb_access_token", "")
+
     st.markdown('<div class="page-title">Submit your pitch</div>', unsafe_allow_html=True)
     st.markdown(
         '<p class="helper-text">Present your core thesis, traction, and fundraising terms. The panel will examine every assumption.</p>',
@@ -62,8 +66,13 @@ def render_pitch_view(user_id: str):
 
     current_intensity = st.session_state.get("selected_intensity", "normal")
 
-    # Display connected data sources note using cached connections
-    user_conns = [c["provider"] for c in get_cached_user_connections(user_id)]
+    # Display connected data sources note via backend API
+    try:
+        conns = api_client.get_connections(token=token)
+        user_conns = [c["provider"] for c in conns]
+    except Exception:
+        user_conns = []
+
     if user_conns:
         conn_names = ", ".join([c.capitalize() for c in user_conns])
         st.markdown(f'<p class="helper-text" style="margin-top: 24px;">:material/link: Connected accounts: {conn_names}</p>', unsafe_allow_html=True)
@@ -74,22 +83,26 @@ def render_pitch_view(user_id: str):
     submit_disabled = len(pitch_text.strip()) < 50
     st.markdown('<div style="margin-top: 24px;"></div>', unsafe_allow_html=True)
     if st.button("Start interrogation", type="primary", disabled=submit_disabled, use_container_width=True):
-        db_session = create_session(user_id=user_id, pitch_text=pitch_text, intensity=current_intensity)
-        session_id = db_session["id"] if db_session else "local_session"
+        with st.spinner("Submitting pitch and convening investment committee..."):
+            try:
+                res = api_client.create_session(
+                    pitch_text=pitch_text,
+                    intensity=current_intensity,
+                    token=token,
+                )
+                session_id = res["session_id"]
+                panel_state = res["state"]
 
-        st.session_state["current_session_id"] = session_id
-        st.session_state["pitch_text"] = pitch_text
-        st.session_state["intensity"] = current_intensity
-        st.session_state["connected_providers"] = user_conns
-        st.session_state["panel_state"] = initial_state(
-            pitch_text=pitch_text,
-            intensity=current_intensity,
-            connected_providers=user_conns,
-            user_id=user_id,
-        )
-        st.session_state["active_page"] = "session"
-        st.session_state["session_active"] = True
-        st.rerun()
+                st.session_state["current_session_id"] = session_id
+                st.session_state["pitch_text"] = pitch_text
+                st.session_state["intensity"] = current_intensity
+                st.session_state["connected_providers"] = user_conns
+                st.session_state["panel_state"] = panel_state
+                st.session_state["active_page"] = "session"
+                st.session_state["session_active"] = True
+                st.rerun()
+            except Exception as exc:
+                st.error(f"Failed to initiate panel session: {exc}")
 
     if submit_disabled:
         st.markdown('<p class="helper-text" style="color: var(--severity-high) !important;">Please provide at least 50 characters in your pitch before submitting.</p>', unsafe_allow_html=True)

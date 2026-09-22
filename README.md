@@ -82,15 +82,22 @@ silently masked by switching providers.
 ## System design
 
 ```
-┌──────────────────────────── Streamlit (app.py) ─────────────────────────────┐
-│ Login (Supabase Auth: Google OAuth + email/password)                        │
-│  → Connect Accounts (GitHub / Google Sheets real; Stripe / Notion mock)     │
-│  → Pitch Submission (pitch text + intensity selector)                       │
-│  → Live Interrogation (streamed reasoning + question per persona turn)      │
-│  → Verdict Report (severity-ranked weaknesses + fixes)                      │
-│  → Pitch History (past sessions, PDF regenerated on demand)                 │
-└───────────────────────────────┬───────────────────────────────────────────────┘
-                                 │
+┌────────────────────────── Streamlit (frontend/app.py) ───────────────────────┐
+│ Login (Supabase Auth: Google OAuth + email/password, 100% client-side)       │
+│  → Connect Accounts (Calls backend OAuth authorize-url & token exchange)     │
+│  → Pitch Submission (Calls POST /api/sessions)                                │
+│  → Live Interrogation (Calls POST /api/sessions/{id}/reply & next-turn)       │
+│  → Verdict Report (Calls GET /api/sessions/{id}/verdict & PDF download)      │
+│  → Pitch History (Calls GET /api/sessions)                                   │
+└───────────────────────────────────────┬───────────────────────────────────────┘
+                                        │ HTTP + Bearer JWT (frontend/api_client.py)
+                                        ▼
+┌─────────────────────────── FastAPI (backend/main.py) ─────────────────────────┐
+│ Auth: backend/deps.py (verifies Supabase JWT using admin client)              │
+│ Routers: /api/sessions, /api/verdicts, /api/pdf, /api/connections             │
+│ LangGraph compilation once on startup: app.state.graph                        │
+└───────────────────────────────────────┬───────────────────────────────────────┘
+                                        │
 ┌────────────────────────────── LangGraph (core/graph.py) ──────────────────────┐
 │  State: pitch_text, intensity, connected_providers, transcript,              │
 │         per-persona round/resolved tracking, llm_calls_made                  │
@@ -104,7 +111,7 @@ silently masked by switching providers.
 │   VC:       GitHub (real activity check)                                     │
 │   Analyst:  Google Sheets (real model), Stripe (mock), pgvector RAG          │
 │   Realist:  Notion (mock), Tavily live search                                │
-└───────────────────────────────┬───────────────────────────────────────────────┘
+└───────────────────────────────────────┬───────────────────────────────────────┘
                                  │
         ┌────────────────────────┼────────────────────────┐
         ▼                        ▼                        ▼
@@ -198,6 +205,11 @@ LLM_PROVIDER_ORDER=       # optional, e.g. "xai,google_genai,groq" — defaults 
 # Live market search
 TAVILY_API_KEY=            # free tier, from tavily.com
 
+# Environment & Service URLs (Two-Process Architecture)
+APP_BASE_URL=http://localhost:8501
+BACKEND_BASE_URL=http://localhost:8000
+FRONTEND_BASE_URL=http://localhost:8501
+
 # Supabase
 SUPABASE_URL=
 SUPABASE_KEY=               # anon/publishable key
@@ -263,14 +275,20 @@ Stripe and Notion connectors have real code paths in `connectors/` but are left
 unconfigured in this build — see [Connectors](#connectors) below for why, and how to
 enable them if you want to.
 
-### 5. Run it
+### 5. Run it (Two-Process Local Development)
+
+The application runs as two decoupled processes:
 
 ```bash
-python test_all.py     # sanity check: imports + PDF generation
-streamlit run app.py
+# Terminal 1: Start FastAPI Backend (Port 8000)
+uvicorn backend.main:app --reload --port 8000
+
+# Terminal 2: Start Streamlit Frontend (Port 8501)
+streamlit run frontend/app.py --server.port 8501
 ```
 
-Open the local URL it prints (typically `http://localhost:8501`).
+Open the frontend URL in your browser: `http://localhost:8501`.
+The frontend communicates exclusively via HTTP with the backend at `http://localhost:8000` (configured via `BACKEND_BASE_URL`).
 
 ---
 

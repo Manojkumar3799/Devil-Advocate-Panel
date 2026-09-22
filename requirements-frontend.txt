@@ -1,0 +1,8 @@
+# Frontend dependencies — only what the Streamlit process needs.
+# All AI/RAG/DB logic runs in the backend; the frontend only needs the Supabase
+# client SDK (ui/auth.py calls Supabase Auth directly) and httpx for API calls.
+
+streamlit>=1.45
+httpx>=0.27
+python-dotenv>=1.0
+supabase>=2.0

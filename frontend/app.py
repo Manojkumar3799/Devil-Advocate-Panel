@@ -5,6 +5,7 @@ Pitch your startup idea. Get grilled by ruthless AI investors.
 
 from __future__ import annotations
 
+import os
 import streamlit as st
 from dotenv import load_dotenv
 
@@ -15,6 +16,13 @@ from ui.session import render_session_view
 from ui.verdict import render_verdict_view
 from ui.connections import render_connections_view
 from ui.history import render_history_view
+
+try:
+    from . import api_client
+except ImportError:
+    import api_client
+
+from db.client import get_supabase_client
 
 load_dotenv()
 
@@ -34,10 +42,12 @@ if "theme" not in st.session_state:
 apply_custom_styles()
 
 
-from connectors.oauth import exchange_code_for_token
-from core.config import get_app_base_url
-from db.connections import save_user_connection
-from db.client import get_supabase_client
+def _get_frontend_base_url() -> str:
+    return (
+        os.environ.get("FRONTEND_BASE_URL")
+        or os.environ.get("APP_BASE_URL")
+        or "http://localhost:8501"
+    )
 
 
 def main():
@@ -54,27 +64,29 @@ def main():
         provider = None
         if "provider=" in state:
             provider = state.split("provider=")[1].split("&")[0]
-        
+
         if provider:
-            token_data = exchange_code_for_token(provider, code, redirect_uri=get_app_base_url())
-            if token_data and "access_token" in token_data:
-                access_token = token_data["access_token"]
-                refresh_token = token_data.get("refresh_token")
-                expires_in = token_data.get("expires_in")
-                save_user_connection(
-                    user_id=user_id,
+            token = st.session_state.get("sb_access_token", "")
+            redirect_uri = _get_frontend_base_url()
+            try:
+                res = api_client.exchange_connection(
                     provider=provider,
-                    access_token=access_token,
-                    refresh_token=refresh_token,
-                    metadata=token_data,
+                    code=code,
+                    state=state,
+                    redirect_uri=redirect_uri,
+                    token=token,
                 )
+                if res.get("success"):
+                    st.query_params.clear()
+                    st.toast(f"Successfully connected {provider.capitalize()}!", icon="✅")
+                    st.session_state["active_page"] = "connections"
+                    st.rerun()
+                else:
+                    st.query_params.clear()
+                    st.error(f"Failed to connect {provider.capitalize()} — could not exchange authorization code.")
+            except Exception as exc:
                 st.query_params.clear()
-                st.toast(f"Successfully connected {provider.capitalize()}!", icon="✅")
-                st.session_state["active_page"] = "connections"
-                st.rerun()
-            else:
-                st.query_params.clear()
-                st.error(f"Failed to connect {provider.capitalize()} — could not exchange authorization code.")
+                st.error(f"Failed to connect {provider.capitalize()}: {exc}")
 
     # Sidebar: Global Shell (§7)
     with st.sidebar:
@@ -106,7 +118,7 @@ def main():
         current_theme = st.session_state["theme"]
         toggle_icon = ":material/light_mode:" if current_theme == "dark" else ":material/dark_mode:"
         toggle_label = f"{toggle_icon} {'Light mode' if current_theme == 'dark' else 'Dark mode'}"
-        
+
         st.markdown('<div class="theme-toggle-container">', unsafe_allow_html=True)
         if st.button(toggle_label, key="theme_toggle", use_container_width=True):
             st.session_state["theme"] = "light" if current_theme == "dark" else "dark"

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from typing import Any
-from .client import get_supabase_client
+from .client import get_supabase_admin_client as get_supabase_client
 
 
 def create_session(user_id: str, pitch_text: str, intensity: str) -> dict[str, Any] | None:

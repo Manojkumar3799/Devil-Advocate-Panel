@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 import streamlit as st
-from db.connections import get_cached_user_connections, delete_connection, save_user_connection
-from connectors.oauth import get_oauth_authorize_url
-from core.config import get_app_base_url
+
+try:
+    from .. import api_client
+except ImportError:
+    import api_client
 
 
 def render_connections_view(user_id: str):
+    token = st.session_state.get("sb_access_token", "")
+
     st.markdown('<div class="page-title">Connect accounts</div>', unsafe_allow_html=True)
     st.markdown(
         '<p class="helper-text">Ground the committee\'s scrutiny in real metrics, repositories, and notes. The panel will cross-check your statements directly against these data sources.</p>',
@@ -16,7 +20,12 @@ def render_connections_view(user_id: str):
     )
     st.markdown('<div style="margin-top: 24px;"></div>', unsafe_allow_html=True)
 
-    connections = {c["provider"]: c for c in get_cached_user_connections(user_id)}
+    try:
+        raw_conns = api_client.get_connections(token=token)
+        connections = {c["provider"]: c for c in raw_conns}
+    except Exception as exc:
+        st.error(f"Failed to fetch connected accounts: {exc}")
+        connections = {}
 
     # Four glassmorphic rows (GitHub, Stripe, Google Sheets, Notion)
     providers = [
@@ -51,15 +60,33 @@ def render_connections_view(user_id: str):
                     unsafe_allow_html=True,
                 )
                 if st.button("Disconnect", key=f"disc_{key}", type="secondary", use_container_width=True):
-                    delete_connection(user_id, key)
-                    st.rerun()
+                    try:
+                        api_client.delete_connection(provider=key, token=token)
+                        st.toast(f"Disconnected {name}.", icon="ℹ️")
+                        st.rerun()
+                    except Exception as exc:
+                        st.error(f"Failed to disconnect {name}: {exc}")
             else:
-                auth_url = get_oauth_authorize_url(key, get_app_base_url(), f"provider={key}")
+                auth_url = None
+                try:
+                    auth_url = api_client.get_authorize_url(provider=key, token=token)
+                except Exception:
+                    auth_url = None
+
                 if auth_url:
                     st.link_button("Connect", auth_url, use_container_width=True)
                 else:
                     if st.button("Connect", key=f"mock_conn_{key}", type="secondary", use_container_width=True):
-                        save_user_connection(user_id, key, access_token=f"mock_token_{key}")
-                        st.rerun()
+                        try:
+                            api_client.exchange_connection(
+                                provider=key,
+                                code=f"mock_token_{key}",
+                                state=f"provider={key}",
+                                redirect_uri="",
+                                token=token,
+                            )
+                            st.toast(f"Connected {name} (mock mode).", icon="✅")
+                            st.rerun()
+                        except Exception as exc:
+                            st.error(f"Failed to connect {name}: {exc}")
         st.markdown('</div>', unsafe_allow_html=True)
-

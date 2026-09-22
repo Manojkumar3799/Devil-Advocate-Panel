@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import streamlit as st
-from langgraph.types import Command
-from core.graph import get_compiled_graph
-from core.state import PERSONA_ORDER
-from core.timing import timed_stage
-from db.transcripts import save_transcript_entry
-from db.sessions import update_session_status
+
+try:
+    from .. import api_client
+except ImportError:
+    import api_client
+
 from .components import render_progress_tracker, render_thinking_dots
 
 PERSONA_META = {
@@ -28,7 +28,6 @@ PERSONA_META = {
         "color": "var(--severity-high)",
     },
 }
-
 
 _BILLING_KEYWORDS = (
     "permission-denied", "permission denied", "insufficient_quota",
@@ -52,14 +51,13 @@ def _handle_graph_error(exc: Exception) -> None:
     else:
         st.error(
             f"Something went wrong generating this response: `{exc}`\n\n"
-            "The rounds completed so far are preserved — you can try again below.",
+            "The rounds completed so far are preserved — you can try submitting your response again.",
             icon=":material/warning:",
         )
-        if st.button("Retry last turn", key="retry_turn_btn", type="secondary"):
-            st.rerun()
 
 
 def render_session_view(user_id: str):
+    token = st.session_state.get("sb_access_token", "")
     state = st.session_state.get("panel_state")
     if not state:
         st.warning("No active session found. Please submit a pitch first.")
@@ -73,7 +71,7 @@ def render_session_view(user_id: str):
 
     # Pitch overview expander
     with st.expander("Case file / Submitted pitch", expanded=False):
-        st.markdown(f'<p class="constrained-text">{state["pitch_text"]}</p>', unsafe_allow_html=True)
+        st.markdown(f'<p class="constrained-text">{state.get("pitch_text", "")}</p>', unsafe_allow_html=True)
 
     st.markdown('<div style="margin-top: 16px;"></div>', unsafe_allow_html=True)
 
@@ -171,25 +169,14 @@ def render_session_view(user_id: str):
                 submitted = st.form_submit_button("Submit response", type="primary", use_container_width=True)
 
             if submitted and user_response.strip():
-                transcript[-1]["user_reply"] = user_response.strip()
-
-                if session_id != "local_session":
-                    save_transcript_entry(
-                        session_id=session_id,
-                        persona=transcript[-1]["persona"],
-                        round_num=transcript[-1]["round"],
-                        thinking_text=transcript[-1].get("thinking", ""),
-                        question_text=transcript[-1].get("question", ""),
-                        user_reply=user_response.strip(),
-                        provider_used=transcript[-1].get("provider_used", ""),
-                    )
-
                 with st.spinner("Deliberating on your response..."):
-                    graph = get_compiled_graph()
-                    config = {"configurable": {"thread_id": session_id}}
                     try:
-                        with timed_stage(f"graph.invoke resume (session={session_id[:8]})"):
-                            updated_state = graph.invoke(Command(resume=user_response.strip()), config=config)
+                        res = api_client.reply_session(
+                            session_id=session_id,
+                            reply=user_response.strip(),
+                            token=token,
+                        )
+                        updated_state = res["state"]
                         st.session_state["panel_state"] = updated_state
                         if updated_state.get("verdict"):
                             st.session_state["active_page"] = "verdict"
@@ -204,15 +191,15 @@ def render_session_view(user_id: str):
             turn_label = "Proceed to next turn" if len(transcript) > 0 else "Begin interrogation"
             if st.button(turn_label, type="primary", use_container_width=True):
                 with st.spinner("Panelist is preparing interrogation line..."):
-                    graph = get_compiled_graph()
-                    config = {"configurable": {"thread_id": session_id}}
                     try:
-                        with timed_stage(f"graph.invoke next_turn (session={session_id[:8]})"):
-                            updated_state = graph.invoke(state, config=config)
+                        res = api_client.next_turn(
+                            session_id=session_id,
+                            token=token,
+                        )
+                        updated_state = res["state"]
                         st.session_state["panel_state"] = updated_state
                         if updated_state.get("verdict"):
                             st.session_state["active_page"] = "verdict"
                         st.rerun()
                     except Exception as exc:
                         _handle_graph_error(exc)
-
