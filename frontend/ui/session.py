@@ -14,17 +14,17 @@ from .components import render_progress_tracker, render_thinking_dots
 PERSONA_META = {
     "vc": {
         "name": "Venture Capitalist",
-        "icon": "trending_up",
+        "icon": "📈",
         "color": "var(--severity-medium)",
     },
     "analyst": {
         "name": "Financial Analyst",
-        "icon": "calculate",
+        "icon": "🧮",
         "color": "var(--severity-low)",
     },
     "realist": {
         "name": "Market Realist",
-        "icon": "public",
+        "icon": "🌐",
         "color": "var(--severity-high)",
     },
 }
@@ -98,9 +98,7 @@ def render_session_view(user_id: str):
                 <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
                     <div style="display: flex; align-items: center;">
                         <div class="avatar-circle">
-                            <span style="color: {meta['color']}; display: inline-flex; align-items: center;">
-                                :material/{meta['icon']}:
-                            </span>
+                            <span style="font-size: 16px; line-height: 1;">{meta['icon']}</span>
                         </div>
                         <span class="persona-name-text">{meta['name']}</span>
                     </div>

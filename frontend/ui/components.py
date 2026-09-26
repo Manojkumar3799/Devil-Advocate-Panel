@@ -717,7 +717,7 @@ def inject_font_links():
         """
         <link rel="preconnect" href="https://fonts.googleapis.com">
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-        <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+        <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=swap" rel="stylesheet">
         """,
         unsafe_allow_html=True,
     )
@@ -773,9 +773,9 @@ def render_thinking_dots():
 def render_progress_tracker(persona_status: dict):
     """Renders the 3 progress bars per persona at the top of the Live Interrogation screen."""
     personas = [
-        ("vc", "VC", "trending_up", "var(--severity-medium)"),
-        ("analyst", "Financial Analyst", "calculate", "var(--severity-low)"),
-        ("realist", "Market Realist", "public", "var(--severity-high)"),
+        ("vc", "VC", "📈", "var(--severity-medium)"),
+        ("analyst", "Financial Analyst", "🧮", "var(--severity-low)"),
+        ("realist", "Market Realist", "🌐", "var(--severity-high)"),
     ]
 
     cols = st.columns(3)
@@ -786,12 +786,12 @@ def render_progress_tracker(persona_status: dict):
         pct = 100 if resolved else min(100, int((rnd / 3) * 100))
 
         with cols[i]:
-            status_desc = ":material/check_circle: Resolved" if resolved else f"Round {rnd} of 3"
+            status_desc = "✅ Resolved" if resolved else f"Round {rnd} of 3"
             st.markdown(
                 f"""
                 <div style="display: flex; justify-content: space-between; align-items: center; font-size: 14px;">
-                    <span style="font-family: 'IBM Plex Sans', sans-serif; font-weight: 500; color: var(--text-primary);">
-                        :material/{icon}: {label}
+                    <span style="font-family: 'IBM Plex Sans', sans-serif; font-weight: 500; color: var(--text-primary); display: inline-flex; align-items: center; gap: 6px;">
+                        <span style="font-size: 16px; line-height: 1;">{icon}</span> {label}
                     </span>
                     <span class="data-mono" style="font-size: 13px;">
                         {status_desc}
